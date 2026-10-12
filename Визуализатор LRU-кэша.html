@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Визуализатор LRU-кэша</title>
+<style>
+:root{
+  --bg:#0a0b14; --panel:#12142400; --panel-solid:#121428; --line:#242850; --text:#e6e8ff; --muted:#8087b8;
+  --blue:#4d8dff; --violet:#9b5cff; --green:#2ee6a6; --red:#ff4d6d; --amber:#ffb84d;
+  --mono:ui-monospace,"JetBrains Mono","SF Mono",Consolas,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100vh;color:var(--text);font-family:var(--sans);
+  background:radial-gradient(900px 500px at 10% -10%,#2a1c5c55,transparent),radial-gradient(800px 500px at 100% 0%,#143a7a44,transparent),var(--bg)}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 20px 40px}
+header h1{margin:0;font-size:1.7rem;letter-spacing:-.02em;
+  background:linear-gradient(90deg,var(--blue),var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+header p{margin:6px 0 22px;color:var(--muted)}
+.layout{display:grid;grid-template-columns:340px 1fr;gap:18px}
+@media(max-width:860px){.layout{grid-template-columns:1fr}}
+.panel{background:var(--panel-solid);border:1px solid var(--line);border-radius:14px;padding:18px;
+  box-shadow:0 0 0 1px #ffffff05 inset,0 10px 40px #00000055}
+.panel h2{margin:0 0 14px;font-size:.95rem;font-weight:600;color:var(--text)}
+label{display:block;font-size:.8rem;color:var(--muted);margin:12px 0 6px}
+.cap-row{display:flex;align-items:center;gap:12px}
+input[type=range]{flex:1;accent-color:var(--violet)}
+.cap-val{font-family:var(--mono);font-size:1.2rem;color:var(--blue);min-width:1.5ch;text-align:right}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+input[type=text]{width:100%;background:#0b0d1d;border:1px solid var(--line);color:var(--text);border-radius:9px;
+  padding:10px 12px;font:inherit;font-family:var(--mono);outline:none;transition:border-color .2s,box-shadow .2s}
+input[type=text]:focus{border-color:var(--blue);box-shadow:0 0 0 3px #4d8dff30}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+button{font:inherit;font-weight:600;font-size:.88rem;border:1px solid var(--line);background:#181b36;color:var(--text);
+  padding:11px 10px;border-radius:9px;cursor:pointer;transition:transform .15s,box-shadow .2s,border-color .2s,background .2s}
+button:hover{transform:translateY(-1px);border-color:var(--violet)}
+button:active{transform:translateY(0)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.b-put{background:linear-gradient(135deg,#3a6df0,#8a4dff);border-color:transparent;box-shadow:0 0 18px #6d5cff55}
+.b-get{background:linear-gradient(135deg,#1f4fb8,#2f86c9);border-color:transparent;box-shadow:0 0 18px #4d8dff44}
+.b-clear:hover{border-color:var(--red);box-shadow:0 0 14px #ff4d6d40}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.stat{background:#0b0d1d;border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center}
+.stat b{display:block;font-family:var(--mono);font-size:1.4rem}
+.stat span{font-size:.72rem;color:var(--muted)}
+.stat.hit b{color:var(--green)} .stat.miss b{color:var(--red)} .stat.rate b{color:var(--blue)}
+.bar{height:6px;border-radius:6px;background:#0b0d1d;margin-top:12px;overflow:hidden;border:1px solid var(--line)}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--violet));transition:width .5s}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 14px;font-size:.78rem;color:var(--muted)}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c)}
+.axis{display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted);margin:0 2px 8px;font-family:var(--mono)}
+.stage{position:relative}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+.slot{height:118px;border:1.5px dashed #2f3568;border-radius:12px;display:flex;align-items:flex-end;justify-content:center;
+  padding-bottom:10px;color:#3d4482;font-family:var(--mono);font-size:.74rem;background:#0b0d1a}
+.card{position:absolute;left:0;top:0;height:118px;border-radius:12px;padding:12px 14px;
+  background:linear-gradient(160deg,#1b2050,#161a3c);border:1.5px solid #3a4496;
+  display:flex;flex-direction:column;justify-content:space-between;
+  transition:transform .55s cubic-bezier(.2,.9,.3,1.1),scale .4s,opacity .4s,border-color .3s,box-shadow .4s}
+.card.enter{scale:.6;opacity:0}
+.card.evict{scale:.7;opacity:0;border-color:var(--red);box-shadow:0 0 30px #ff4d6d88}
+.card .k{font-family:var(--mono);font-size:1.7rem;font-weight:700;line-height:1}
+.card .v{font-family:var(--mono);font-size:.82rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .tag{align-self:flex-start;font-size:.68rem;padding:2px 7px;border-radius:20px;background:#ffffff10;color:var(--muted)}
+.card.mru .tag{background:#2ee6a622;color:var(--green)}
+.card.lru{border-color:var(--red)}
+.card.lru .tag{background:#ff4d6d26;color:var(--red)}
+.card.lru.full{animation:pulse 1.6s ease-in-out infinite}
+.card.flash-new{border-color:var(--green);box-shadow:0 0 28px #2ee6a666}
+.card.flash-hit{border-color:var(--blue);box-shadow:0 0 28px #4d8dff77}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 #ff4d6d00}50%{box-shadow:0 0 22px #ff4d6d77}}
+.empty-note{color:var(--muted);font-size:.85rem;margin-top:12px}
+.log{margin-top:18px}
+.log ul{list-style:none;margin:0;padding:0;max-height:240px;overflow-y:auto;font-family:var(--mono);font-size:.82rem}
+.log li{display:flex;gap:10px;padding:7px 10px;border-left:3px solid var(--c,var(--line));margin-bottom:6px;background:#0b0d1d;
+  border-radius:0 8px 8px 0;animation:slide .35s ease-out}
+.log li time{color:var(--muted);flex:none}
+.log li b{color:var(--text)}
+.log .hit{--c:var(--green)} .log .miss{--c:var(--amber)} .log .evict{--c:var(--red)} .log .info{--c:var(--violet)} .log .add{--c:var(--blue)}
+@keyframes slide{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01s!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Визуализатор LRU-кэша</h1>
+    <p>Записывайте и читайте блоки памяти — кэш вытесняет тот, к которому дольше всего не обращались.</p>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <section class="panel">
+        <h2>Настройки</h2>
+        <label for="cap">Ёмкость кэша (Capacity)</label>
+        <div class="cap-row">
+          <input type="range" id="cap" min="3" max="8" value="5">
+          <span class="cap-val" id="capVal">5</span>
+        </div>
+        <div class="fields">
+          <div><label for="key">Ключ / блок</label><input type="text" id="key" maxlength="6" placeholder="A" autocomplete="off"></div>
+          <div><label for="val">Значение</label><input type="text" id="val" maxlength="14" placeholder="необязательно" autocomplete="off"></div>
+        </div>
+        <div class="btns">
+          <button class="b-put" id="put">PUT (записать)</button>
+          <button class="b-get" id="get">GET (прочитать)</button>
+          <button id="rand">Случайный запрос</button>
+          <button class="b-clear" id="clear">Очистить кэш</button>
+        </div>
+      </section>
+
+      <section class="panel" style="margin-top:18px">
+        <h2>Статистика</h2>
+        <div class="stats">
+          <div class="stat hit"><b id="sHit">0</b><span>Cache Hits</span></div>
+          <div class="stat miss"><b id="sMiss">0</b><span>Cache Misses</span></div>
+          <div class="stat rate"><b id="sRate">0%</b><span>Hit Rate</span></div>
+        </div>
+        <div class="bar"><i id="rateBar"></i></div>
+      </section>
+    </aside>
+
+    <main>
+      <section class="panel">
+        <h2>Ячейки кэша</h2>
+        <div class="legend">
+          <span style="--c:var(--green)">новый / MRU</span>
+          <span style="--c:var(--blue)">обновлён / попадание</span>
+          <span style="--c:var(--red)">Least Recently Used — уйдёт следующим</span>
+        </div>
+        <div class="axis"><span>← недавно использован (MRU)</span><span>давно не использован (LRU) →</span></div>
+        <div class="stage" id="stage">
+          <div class="slots" id="slots"></div>
+        </div>
+        <p class="empty-note" id="emptyNote">Кэш пуст. Введите ключ и нажмите PUT.</p>
+      </section>
+
+      <section class="panel log">
+        <h2>Журнал операций</h2>
+        <ul id="log" aria-live="polite"></ul>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Модель ----------
+  class LRUCache {
+    constructor(capacity) { this.capacity = capacity; this.items = []; } // items[0] = MRU, последний = LRU
+    indexOf(key) { return this.items.findIndex(i => i.key === key); }
+    touch(idx) { const [it] = this.items.splice(idx, 1); this.items.unshift(it); return it; }
+    get(key) { const i = this.indexOf(key); return i < 0 ? null : this.touch(i); }
+    put(key, value) {
+      const i = this.indexOf(key);
+      if (i >= 0) { const it = this.touch(i); it.value = value; return { hit: true, evicted: null }; }
+      let evicted = null;
+      if (this.items.length >= this.capacity) evicted = this.items.pop();
+      this.items.unshift({ key, value });
+      return { hit: false, evicted };
+    }
+    resize(n) { this.capacity = n; const out = []; while (this.items.length > n) out.push(this.items.pop()); return out; }
+    clear() { this.items = []; }
+  }
+
+  // ---------- Состояние и DOM ----------
+  const cache = new LRUCache(5);
+  const stats = { hits: 0, misses: 0 };
+  const cards = new Map();      // key -> элемент
+  const flashes = new Map();    // key -> 'new' | 'hit'
+  const $ = id => document.getElementById(id);
+  const el = { cap: $('cap'), capVal: $('capVal'), key: $('key'), val: $('val'), slots: $('slots'), stage: $('stage'),
+    log: $('log'), note: $('emptyNote'), sHit: $('sHit'), sMiss: $('sMiss'), sRate: $('sRate'), bar: $('rateBar') };
+
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const time = () => new Date().toLocaleTimeString('ru-RU');
+
+  function log(type, html) {
+    const li = document.createElement('li');
+    li.className = type;
+    li.innerHTML = `<time>${time()}</time><span>${html}</span>`;
+    el.log.prepend(li);
+    while (el.log.children.length > 60) el.log.lastChild.remove();
+  }
+
+  // ---------- Отрисовка ----------
+  function syncSlots() {
+    while (el.slots.children.length < cache.capacity) {
+      const s = document.createElement('div'); s.className = 'slot'; el.slots.appendChild(s);
+    }
+    while (el.slots.children.length > cache.capacity) el.slots.lastChild.remove();
+    [...el.slots.children].forEach((s, i) => s.textContent = `ячейка ${i}`);
+  }
+
+  function place(card, i) {
+    const s = el.slots.children[i];
+    card.style.width = s.offsetWidth + 'px';
+    card.style.transform = `translate(${s.offsetLeft}px, ${s.offsetTop}px)`;
+  }
+
+  function render() {
+    syncSlots();
+    const full = cache.items.length >= cache.capacity;
+    cache.items.forEach((it, i) => {
+      let c = cards.get(it.key);
+      if (!c) {
+        c = document.createElement('div');
+        c.className = 'card enter';
+        c.innerHTML = '<span class="tag"></span><div><div class="k"></div><div class="v"></div></div>';
+        el.stage.appendChild(c);
+        cards.set(it.key, c);
+        place(c, i);
+        void c.offsetWidth;            // reflow, чтобы запустить анимацию появления
+        c.classList.remove('enter');
+      }
+      c.querySelector('.k').textContent = it.key;
+      c.querySelector('.v').textContent = it.value;
+      const isMru = i === 0, isLru = i === cache.items.length - 1 && cache.items.length > 1;
+      c.classList.toggle('mru', isMru);
+      c.classList.toggle('lru', isLru);
+      c.classList.toggle('full', isLru && full);
+      c.querySelector('.tag').textContent = isLru ? 'Least Recently Used' : isMru ? 'Most Recent' : `#${i}`;
+      const f = flashes.get(it.key);
+      c.classList.toggle('flash-new', f === 'new');
+      c.classList.toggle('flash-hit', f === 'hit');
+      place(c, i);
+    });
+    el.note.style.display = cache.items.length ? 'none' : '';
+    renderStats();
+  }
+
+  function renderStats() {
+    const total = stats.hits + stats.misses;
+    const rate = total ? Math.round(stats.hits / total * 100) : 0;
+    el.sHit.textContent = stats.hits; el.sMiss.textContent = stats.misses;
+    el.sRate.textContent = rate + '%'; el.bar.style.width = rate + '%';
+  }
+
+  function flash(key, type) {
+    flashes.set(key, type);
+    setTimeout(() => { if (flashes.get(key) === type) { flashes.delete(key); render(); } }, 1500);
+  }
+
+  function removeCard(key) {
+    const c = cards.get(key);
+    if (!c) return;
+    cards.delete(key);
+    c.classList.add('evict');
+    setTimeout(() => c.remove(), 600);
+  }
+
+  // ---------- Операции ----------
+  function readInput() {
+    const key = el.key.value.trim().toUpperCase();
+    if (!key) { el.key.focus(); log('info', 'Введите ключ (например, <b>A</b>), чтобы выполнить операцию.'); return null; }
+    return { key, value: el.val.value.trim() };
+  }
+  const autoValue = () => '0x' + Math.floor(Math.random() * 0xfff).toString(16).toUpperCase().padStart(3, '0');
+
+  function doPut(key, value) {
+    const val = value || autoValue();
+    const r = cache.put(key, val);
+    if (r.hit) {
+      stats.hits++; flash(key, 'hit');
+      log('hit', `Cache Hit: ключ <b>'${esc(key)}'</b> обновлён и перемещён в начало (MRU).`);
+    } else {
+      stats.misses++; flash(key, 'new');
+      if (r.evicted) {
+        removeCard(r.evicted.key); flashes.delete(r.evicted.key);
+        log('evict', `Вытеснен ключ <b>'${esc(r.evicted.key)}'</b> из-за переполнения.`);
+      }
+      log('add', `Cache Miss при записи — ключ <b>'${esc(key)}'</b> добавлен в кэш.`);
+    }
+    render();
+  }
+
+  function doGet(key) {
+    const it = cache.get(key);
+    if (it) {
+      stats.hits++; flash(key, 'hit');
+      log('hit', `Cache Hit для ключа <b>'${esc(key)}'</b>: значение <b>${esc(it.value)}</b>, элемент стал MRU.`);
+    } else {
+      stats.misses++;
+      log('miss', `Cache Miss для ключа <b>'${esc(key)}'</b> — в кэше нет такого блока.`);
+    }
+    render();
+  }
+
+  function doRandom() {
+    const key = 'ABCDEFGHIJ'[Math.floor(Math.random() * 10)];
+    el.key.value = key;
+    Math.random() < 0.5 ? doPut(key, '') : doGet(key);
+  }
+
+  function doClear() {
+    [...cards.keys()].forEach(removeCard);
+    cache.clear(); flashes.clear();
+    stats.hits = 0; stats.misses = 0;
+    log('info', 'Кэш очищен, статистика сброшена.');
+    render();
+  }
+
+  // ---------- События ----------
+  $('put').onclick = () => { const i = readInput(); if (i) doPut(i.key, i.value); };
+  $('get').onclick = () => { const i = readInput(); if (i) doGet(i.key); };
+  $('rand').onclick = doRandom;
+  $('clear').onclick = doClear;
+  [el.key, el.val].forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') $('put').click(); }));
+
+  el.cap.addEventListener('input', () => {
+    const n = +el.cap.value;
+    el.capVal.textContent = n;
+    const out = cache.resize(n);
+    out.forEach(it => { removeCard(it.key); flashes.delete(it.key); log('evict', `Вытеснен ключ <b>'${esc(it.key)}'</b>: ёмкость уменьшена до ${n}.`); });
+    log('info', `Ёмкость кэша: <b>${n}</b>.`);
+    render();
+  });
+
+  window.addEventListener('resize', render);
+
+  render();
+  log('info', 'Симулятор готов. Попробуйте PUT с ключами A, B, C…');
+})();
+</script>
+</body>
+</html>
